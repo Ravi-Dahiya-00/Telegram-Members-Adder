@@ -186,7 +186,6 @@ def dashboard():
     return html
 
 # --------------- START BOT + API TOGETHER -------------------
-
 async def run_bot():
     app_telegram = ApplicationBuilder().token(TOKEN).build()
 
@@ -196,9 +195,14 @@ async def run_bot():
 
     print("Telegram bot started...")
     await app_telegram.initialize()
+
+    # IMPORTANT: Remove webhook (Telegram prefers webhook by default)
+    await app_telegram.bot.delete_webhook(drop_pending_updates=True)
+
     await app_telegram.start()
     await app_telegram.updater.start_polling()
     await app_telegram.updater.idle()
+
 
 def main():
     loop = asyncio.get_event_loop()
