@@ -42,7 +42,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👋 Hello {user.first_name}!\n"
         f"Here is your referral link:\n"
         f"{referral_link}\n\n"
-        f"Share this link – anyone who joins using it will be counted under you!"
+        f"Share this link – anyone who joins using it will be counted under you!\n"
+        f"Your total referrals: {data[user_id]['count']}"
     )
 
 async def track_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -177,7 +178,7 @@ def dashboard():
 async def run_bot():
     app_telegram = ApplicationBuilder().token(TOKEN).build()
 
-    app_telegram.add_handler(CommandHandler("start", track_referral))
+    app_telegram.add_handler(CommandHandler("start", start))
     app_telegram.add_handler(CommandHandler("leaderboard", leaderboard))
 
     print("Telegram bot started...")
@@ -186,10 +187,8 @@ async def run_bot():
     await app_telegram.updater.start_polling()
     await app_telegram.updater.idle()
 
-# Start bot + FastAPI together
 def main():
     loop = asyncio.get_event_loop()
-
     loop.create_task(run_bot())
 
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
