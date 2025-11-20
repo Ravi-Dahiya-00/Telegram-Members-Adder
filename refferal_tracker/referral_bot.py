@@ -1,14 +1,19 @@
 import json
 import os
-from telegram import Update
+import asyncio
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from fastapi import FastAPI, Request
+from telegram import Update
+from telegram.error import BadRequest
 import uvicorn
 
-TOKEN = os.getenv("BOT_TOKEN")   # Render environment variable
+# Read token from Render environment
+TOKEN = os.environ.get("BOT_TOKEN")
+
 DATA_FILE = "referrals.json"
 
-# Load referrals
+# ---------------- JSON STORAGE ----------------
 def load_data():
     try:
         with open(DATA_FILE, "r") as f:
@@ -16,12 +21,12 @@ def load_data():
     except:
         return {}
 
-# Save referrals
 def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-# /start handler
+# ------------- TELEGRAM BOT COMMANDS ----------
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = str(user.id)
@@ -35,49 +40,48 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"👋 Hello {user.first_name}!\n"
-        f"Here is your referral link:\n{referral_link}\n\n"
-        f"Share this link!"
+        f"Here is your referral link:\n"
+        f"{referral_link}\n\n"
+        f"Share this link – anyone who joins using it will be counted under you!"
     )
 
-# Track referrals
 async def track_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = str(user.id)
+    data = load_data()
 
     if context.args:
         referrer_id = context.args[0]
 
-        if referrer_id != user_id:
-            data = load_data()
-            if referrer_id in data:
-                data[referrer_id]["count"] += 1
-                save_data(data)
+        if referrer_id != user_id and referrer_id in data:
+            data[referrer_id]["count"] += 1
+            save_data(data)
 
-                await context.bot.send_message(
-                    chat_id=referrer_id,
-                    text=f"🎉 Someone joined using your link!\n"
-                         f"Total referrals: {data[referrer_id]['count']}"
-                )
+            await context.bot.send_message(
+                chat_id=referrer_id,
+                text=f"🎉 Someone joined using your referral link!\n"
+                     f"Total referrals: {data[referrer_id]['count']}"
+            )
 
     await update.message.reply_text("You joined successfully!")
 
-# Leaderboard
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load_data()
 
     if not data:
-        await update.message.reply_text("No referral data yet.")
+        await update.message.reply_text("😕 No referral data yet.")
         return
 
     sorted_users = sorted(data.items(), key=lambda x: x[1]["count"], reverse=True)
 
     msg = "🏆 *Referral Leaderboard* 🏆\n\n"
     rank = 1
+
     for user_id, info in sorted_users:
         try:
             chat = await context.bot.get_chat(int(user_id))
             name = chat.first_name
-        except:
+        except BadRequest:
             name = "Unknown User"
 
         msg += f"{rank}. {name} — {info['count']} referrals\n"
@@ -85,35 +89,110 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(msg)
 
-# FASTAPI WEB SERVER
+# ---------------- FASTAPI DASHBOARD ----------------
+
 app = FastAPI()
 
-@app.post("/webhook")
-async def webhook(request: Request):
-    body = await request.json()
-    await application.update_queue.put(Update.de_json(body, application.bot))
-    return {"ok": True}
-
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def home():
-    return {"status": "Bot is running via webhook!"}
+    return "<h2>Bot is running successfully! 🚀</h2>"
 
-# MAIN ENTRYPOINT
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard():
+    data = load_data()
+
+    total_users = len(data)
+    total_referrals = sum(v["count"] for v in data.values())
+
+    sorted_users = sorted(data.items(), key=lambda x: x[1]["count"], reverse=True)
+
+    leaderboard_html = ""
+    rank = 1
+    for user_id, info in sorted_users:
+        leaderboard_html += f"""
+        <tr>
+            <td>{rank}</td>
+            <td>{user_id}</td>
+            <td>{info['count']}</td>
+        </tr>
+        """
+        rank += 1
+
+    html = f"""
+    <html>
+    <head>
+        <title>Referral Dashboard</title>
+        <style>
+            body {{
+                font-family: Arial;
+                padding: 20px;
+                background-color: #f4f4f4;
+            }}
+            .box {{
+                background: white;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+            }}
+            th, td {{
+                padding: 10px;
+                border-bottom: 1px solid #ddd;
+                text-align: center;
+            }}
+            th {{
+                background-color: #222;
+                color: white;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="box">
+            <h1>📊 Referral Dashboard</h1>
+
+            <p><b>Total Users:</b> {total_users}</p>
+            <p><b>Total Referrals:</b> {total_referrals}</p>
+
+            <h2>🏆 Leaderboard</h2>
+            <table>
+                <tr>
+                    <th>Rank</th>
+                    <th>User ID</th>
+                    <th>Referrals</th>
+                </tr>
+                {leaderboard_html}
+            </table>
+        </div>
+    </body>
+    </html>
+    """
+
+    return html
+
+# --------------- START BOT + API TOGETHER -------------------
+
+async def run_bot():
+    app_telegram = ApplicationBuilder().token(TOKEN).build()
+
+    app_telegram.add_handler(CommandHandler("start", track_referral))
+    app_telegram.add_handler(CommandHandler("leaderboard", leaderboard))
+
+    print("Telegram bot started...")
+    await app_telegram.initialize()
+    await app_telegram.start()
+    await app_telegram.updater.start_polling()
+    await app_telegram.updater.idle()
+
+# Start bot + FastAPI together
+def main():
+    loop = asyncio.get_event_loop()
+
+    loop.create_task(run_bot())
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
 if __name__ == "__main__":
-    application = ApplicationBuilder().token(TOKEN).build()
-
-    application.add_handler(CommandHandler("start", track_referral))
-    application.add_handler(CommandHandler("leaderboard", leaderboard))
-
-    # Start webhook
-    port = int(os.getenv("PORT", 10000))
-    app_url = os.getenv("RENDER_EXTERNAL_URL")
-
-    # Set Telegram webhook
-    import asyncio
-    asyncio.get_event_loop().run_until_complete(
-        application.bot.set_webhook(f"{app_url}/webhook")
-    )
-
-    # Start FastAPI server
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    main()
