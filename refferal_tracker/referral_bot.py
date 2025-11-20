@@ -28,18 +28,28 @@ def save_data(data):
 # ------------- TELEGRAM BOT COMMANDS ----------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles normal start + referral tracking"""
     user = update.effective_user
     user_id = str(user.id)
 
     data = load_data()
-
-    # Create user entry if not exists
     if user_id not in data:
         data[user_id] = {"count": 0}
         save_data(data)
 
-    # ---------- REFERRAL TRACKING ----------
+    referral_link = f"https://t.me/{context.bot.username}?start={user_id}"
+
+    await update.message.reply_text(
+        f"👋 Hello {user.first_name}!\n"
+        f"Here is your referral link:\n"
+        f"{referral_link}\n\n"
+        f"Share this link – anyone who joins using it will be counted under you!"
+    )
+
+async def track_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_id = str(user.id)
+    data = load_data()
+
     if context.args:
         referrer_id = context.args[0]
 
@@ -53,32 +63,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                      f"Total referrals: {data[referrer_id]['count']}"
             )
 
-        await update.message.reply_text("You joined successfully!")
-        return
-
-    # ---------- NORMAL /start ----------
-    referral_link = f"https://t.me/{context.bot.username}?start={user_id}"
-
-    await update.message.reply_text(
-        f"👋 Hello {user.first_name}!\n"
-        f"Here is your referral link:\n"
-        f"{referral_link}\n\n"
-        f"Share this link – anyone who joins using it will be counted under you!"
-    )
-
-async def myreferrals(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show user’s referral count"""
-    user_id = str(update.effective_user.id)
-    data = load_data()
-
-    count = data.get(user_id, {}).get("count", 0)
-
-    await update.message.reply_text(
-        f"📊 You have {count} total referrals."
-    )
+    await update.message.reply_text("You joined successfully!")
 
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Displays the leaderboard"""
     data = load_data()
 
     if not data:
@@ -185,26 +172,24 @@ def dashboard():
 
     return html
 
+# --------------- START BOT + API TOGETHER -------------------
 
 async def run_bot():
     app_telegram = ApplicationBuilder().token(TOKEN).build()
 
-    app_telegram.add_handler(CommandHandler("start", start))
+    app_telegram.add_handler(CommandHandler("start", track_referral))
     app_telegram.add_handler(CommandHandler("leaderboard", leaderboard))
 
     print("Telegram bot started...")
     await app_telegram.initialize()
-
-    # IMPORTANT
-    await app_telegram.bot.delete_webhook(drop_pending_updates=True)
-
     await app_telegram.start()
     await app_telegram.updater.start_polling()
     await app_telegram.updater.idle()
 
-
+# Start bot + FastAPI together
 def main():
     loop = asyncio.get_event_loop()
+
     loop.create_task(run_bot())
 
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
