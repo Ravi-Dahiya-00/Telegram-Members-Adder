@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from fastapi import FastAPI, Request
 import uvicorn
 
-TOKEN = os.getenv("TOKEN")   # Render environment variable
+TOKEN = os.getenv("BOT_TOKEN")   # Render environment variable
 DATA_FILE = "referrals.json"
 
 # Load referrals
