@@ -62,7 +62,7 @@ def add_new_accounts():
             print(f'{lg}[+] Login successful')
             c.disconnect()
         input(f'\n Press enter to goto main menu...')
-
+# done
 def filter_banned_accounts():
     accounts = []
     banned_accs = []
