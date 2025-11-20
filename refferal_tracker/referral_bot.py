@@ -185,18 +185,17 @@ def dashboard():
 
     return html
 
-# --------------- START BOT + API TOGETHER -------------------
+
 async def run_bot():
     app_telegram = ApplicationBuilder().token(TOKEN).build()
 
     app_telegram.add_handler(CommandHandler("start", start))
-    app_telegram.add_handler(CommandHandler("myreferrals", myreferrals))
     app_telegram.add_handler(CommandHandler("leaderboard", leaderboard))
 
     print("Telegram bot started...")
     await app_telegram.initialize()
 
-    # IMPORTANT: Remove webhook (Telegram prefers webhook by default)
+    # IMPORTANT
     await app_telegram.bot.delete_webhook(drop_pending_updates=True)
 
     await app_telegram.start()
