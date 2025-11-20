@@ -1,1 +1,4 @@
 python-telegram-bot==20.3
+telethon==1.28.5
+requests
+colorama==0.4.6
